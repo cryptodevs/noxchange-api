@@ -1,0 +1,17 @@
+{
+    "dev": {
+        "app_function": "noxchange_api.app", 
+        "aws_region": "us-east-1", 
+        "profile_name": "nicolas.kittsteiner", 
+        "project_name": "noxchange-api", 
+        "runtime": "python2.7", 
+        "s3_bucket": "noxchange-api-dev",
+        "keep_warm": false,
+
+        "environment_variables": {
+            "MAIL_ADDRESS": "noxchange.test@gmail.com",
+            "MAIL_PWD": "zuperSecur3!",
+            "DB_URI": "postgresql://postgres@db:5432/postgres"
+        }        
+    }
+}
