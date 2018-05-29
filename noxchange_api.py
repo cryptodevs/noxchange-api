@@ -3,6 +3,7 @@ import time
 import datetime
 import random
 import hashlib
+import logging
 from flask import Flask,abort, request, jsonify, g, url_for
 from flask_httpauth import HTTPTokenAuth
 from flask_sqlalchemy import SQLAlchemy
@@ -131,21 +132,21 @@ def get_user(id):
 
 @app.route('/api/{0}/user/token'.format(version), methods=['POST'])
 def get_auth_token():    
-    username = request.json.get('username')
+    email = request.json.get('email')
     password = request.json.get('password')
 
     
-    if username is None or password is None:
+    if email is None or password is None:
         abort(400)    # missing arguments
-    if not User.query.filter_by(username=username).first() is not None:
+    if not User.query.filter_by(email=email).first() is not None:
         abort(400) # It doesn't exists
 
-    user = User.query.filter_by(username=username).first()
+    user = User.query.filter_by(email=email).first()
     if not user.verify_password(password):
         abort(400) # Password doesn't match
 
-    token = user.generate_auth_token(600)
-    return jsonify({'token': token.decode('ascii'), 'duration': 600})
+    token = user.generate_auth_token()
+    return jsonify({'token': token.decode('ascii'), 'duration': 3600})
 
 
 @app.route('/api/{0}/user/forgot'.format(version), methods=['POST'])
@@ -196,4 +197,8 @@ if __name__ == '__main__':
         db.create_all()
         app.run(debug=True,host='0.0.0.0',port=int(os.getenv('PORT', 5000)))
     else:
+        logging.info("HERE")
+        logging.info(os.environ)  
+        db.create_all()
         app.run()
+        

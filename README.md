@@ -27,6 +27,31 @@ PUT  /api/:version/user [username, password]
 POST /api/:version/market/khipu
 
 ## Operations 
+POST /api/:version/sale/request
+Posible states:
+    * SALE_MIN_REQUESTED
+
+POST /api/:version/sale/request/[khipu]   // In this case Khipu
+    * SALE_MIN_REQUEST_ABORTED
+    * SALE_MIN_REQUEST_PAYED
+    * SALE_NOTIFY_REQUEST
+
+POST /api/:version/sale/escrow
+    * SALE_TX_IN_PROGRESS
+    * SALE_TX_REJECTED
+    * SALE_TX_COMPLETED
+
+POST /api/:version/sale/completepayment/[khipu]
+    * SALE_PAY_REJECTED
+    * SALE_PAY_OK
+
+POST /api/:version/sale/escrow/transfer
+    * SALE_TRANSFER_ESCROW_OK
+    * SALE_TRANSFER_ESCROW_REJECTED
+    * SALE_COMPLETED
+
+## Payments
+POST /api/:version/khipu
 
 ## Important 
 

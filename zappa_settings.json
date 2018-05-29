@@ -7,11 +7,17 @@
         "runtime": "python2.7", 
         "s3_bucket": "noxchange-api-dev",
         "keep_warm": false,
-
+        "cors": true,
+        "timeout_seconds": 120,
         "environment_variables": {
             "MAIL_ADDRESS": "noxchange.test@gmail.com",
             "MAIL_PWD": "zuperSecur3!",
-            "DB_URI": "postgresql://postgres@db:5432/postgres"
+            "DB_URI": "postgresql://noxchange_dev:thNj7sm5.PJl.@noxchange-db-dev.cnnxmhjf0aqi.us-east-1.rds.amazonaws.com:5432/noxchange_dev"
+        },
+        "aws_environment_variables": {
+            "MAIL_ADDRESS": "noxchange.test@gmail.com",
+            "MAIL_PWD": "zuperSecur3!",
+            "DB_URI": "postgresql://noxchange_dev:thNj7sm5.PJl.@noxchange-db-dev.cnnxmhjf0aqi.us-east-1.rds.amazonaws.com:5432/noxchange_dev"
         }        
     }
 }
