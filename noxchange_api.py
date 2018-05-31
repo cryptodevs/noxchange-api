@@ -4,6 +4,8 @@ import datetime
 import random
 import hashlib
 import logging
+import simple_khipu
+import json
 from flask import Flask,abort, request, jsonify, g, url_for
 from flask_httpauth import HTTPTokenAuth
 from flask_sqlalchemy import SQLAlchemy
@@ -188,7 +190,92 @@ def edit_user():
     db.session.commit()
     return(jsonify({'OK': '200'}), 200)
 
+# Payments
+@app.route('/api/{0}/khipu'.format(version), methods=['POST'])
+def get_khipu_url():
+    """
+    https://khipu.com/page/api-referencia#paymentsPost
+    """
+    # Fields for authentication with service
+    user_id = request.json.get('user_id')
+    secret = request.json.get('secret')
+    
+    if user_id is None or secret is None:
+        abort(500)
 
+    data = {}
+    # Required fields    
+    if request.json.get('subject') is None or request.json.get('currency') is None \
+        or request.json.get('amount') is None:
+        abort(500)
+
+    data['subject'] = request.json.get('subject')
+    data['currency'] = request.json.get('currency') # CLP
+    data['amount'] = request.json.get('amount')
+
+    # Optional fields
+    if request.json.get('transaction_id') is not None:
+        data['transaction_id'] = request.json.get('transaction_id')
+    if request.json.get('custom') is not None:
+        data['custom'] = request.json.get('custom')
+    if request.json.get('body') is not None:
+        data['body'] = request.json.get('body')
+    if request.json.get('bank_id') is not None:
+        data['bank_id'] = request.json.get('bank_id')
+    if request.json.get('return_url') is not None:
+        data['return_url'] = request.json.get('return_url')
+    if request.json.get('cancel_url') is not None:
+        data['cancel_url'] = request.json.get('cancel_url')
+    if request.json.get('picture_url') is not None:
+        data['picture_url'] = request.json.get('picture_url')
+    #!important, callback
+    if request.json.get('notify_url') is not None:
+        data['notify_url'] = request.json.get('notify_url')
+    if request.json.get('contract_url') is not None:
+        data['contract_url'] = request.json.get('contract_url') 
+    if request.json.get('notify_api_version') is not None:
+        data['notify_api_version'] = request.json.get('notify_api_version')
+    #ISO-8601 format
+    if request.json.get('expires_date') is not None:
+        data['expires_date'] = request.json.get('expires_date')
+    if request.json.get('send_email') is not None:
+        data['send_email'] = request.json.get('send_email')
+    if request.json.get('payer_name') is not None:
+        data['payer_name'] = request.json.get('payer_name')
+    if request.json.get('payer_email') is not None:
+        data['payer_email'] = request.json.get('payer_email')
+    if request.json.get('send_reminders') is not None:
+        data['send_reminders'] = request.json.get('send_reminders')
+    if request.json.get('responsible_user_email') is not None:
+        data['responsible_user_email'] = request.json.get('responsible_user_email')
+    if request.json.get('fixed_payer_personal_identifier') is not None:
+        data['fixed_payer_personal_identifier'] = request.json.get('fixed_payer_personal_identifier')
+    if request.json.get('integrator_fee') is not None:
+        data['integrator_fee'] = request.json.get('integrator_fee')
+    if request.json.get('collect_account_uuid') is not None:
+        data['collect_account_uuid'] = request.json.get('collect_account_uuid')
+    try:
+        return simple_khipu.create_payment(user_id, secret, json.dumps(data))
+    
+    except:
+        abort(500)
+    
+    
+
+@app.route('/api/{0}/khipu/check'.format(version),methods=['POST'])
+def check_khipu_payment():
+    # Fields for authentication with service
+    user_id = request.json.get('user_id')
+    secret = request.json.get('secret')
+    notification_token = request.json.get('notification_token')
+    if user_id is None or secret is None or notification_token is None:
+        abort(500)    
+
+    data = {
+        'notification_token': notification_token
+    }
+
+    return simple_khipu.check_payment(user_id, secret, json.dumps(data))
 
 if __name__ == '__main__':
     # Waiting for docker initialization

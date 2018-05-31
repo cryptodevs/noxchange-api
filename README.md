@@ -51,7 +51,16 @@ POST /api/:version/sale/escrow/transfer
     * SALE_COMPLETED
 
 ## Payments
+
 POST /api/:version/khipu
+POST /api/:version/khipu/callback
+
+POST /api/:version/ethereum
+GET /api/:version/ethereum/<:transaction_id>
+
+## Wallets
+
+POST /api/:version/wallet/ethereum/new
 
 ## Important 
 
