@@ -54,6 +54,7 @@ POST /api/:version/sale/escrow/transfer
 
 POST /api/:version/khipu
 POST /api/:version/khipu/callback
+GET /api/:version/khipu/check/<:notification_token>
 
 POST /api/:version/ethereum
 GET /api/:version/ethereum/<:transaction_id>

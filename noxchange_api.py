@@ -1,11 +1,5 @@
-import os
-import time
-import datetime
-import random
-import hashlib
-import logging
+import boto3, os, time, datetime, random, hashlib, logging, json
 import simple_khipu
-import json
 from flask import Flask,abort, request, jsonify, g, url_for
 from flask_httpauth import HTTPTokenAuth
 from flask_sqlalchemy import SQLAlchemy
@@ -231,6 +225,8 @@ def get_khipu_url():
     #!important, callback
     if request.json.get('notify_url') is not None:
         data['notify_url'] = request.json.get('notify_url')
+    else:
+        data['notify_url'] = '{0}api/{1}/khipu/callback'.format(request.url_root, version)
     if request.json.get('contract_url') is not None:
         data['contract_url'] = request.json.get('contract_url') 
     if request.json.get('notify_api_version') is not None:
@@ -255,6 +251,7 @@ def get_khipu_url():
     if request.json.get('collect_account_uuid') is not None:
         data['collect_account_uuid'] = request.json.get('collect_account_uuid')
     try:
+        print (json.dumps(data))
         return simple_khipu.create_payment(user_id, secret, json.dumps(data))
     
     except:
@@ -276,6 +273,17 @@ def check_khipu_payment():
     }
 
     return simple_khipu.check_payment(user_id, secret, json.dumps(data))
+
+
+@app.route('/api/{0}/khipu/callback', methods=['POST'])
+def testreturn():
+    form = request.form.to_dict()
+    data = json.dumps(form)
+    client = boto3.client('s3')
+    key = str(int(time.time()))
+    bucket = 'noxchange-khipu-dev'
+    client.put_object(Body=data, Bucket=bucket, Key='khipu/{0}.txt'.format(key))
+    return jsonify(test_dict)
 
 if __name__ == '__main__':
     # Waiting for docker initialization

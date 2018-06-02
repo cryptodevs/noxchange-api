@@ -51,12 +51,4 @@ def check_payment(user_id, secret, json_data):
     """
     method = 'GET'
     service = 'payments'
-    return make_request(user_id, method, service, secret, json_data)
-
-def get_banks(user_id, secret, json_data):
-    """    
-    https://khipu.com/page/api-referencia#banksGet
-    """
-    method = 'GET'
-    service = 'banks'
     return make_request(user_id, method, service, secret, json_data)    
