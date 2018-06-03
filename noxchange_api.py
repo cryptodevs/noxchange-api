@@ -1,4 +1,4 @@
-import boto3, os, time, datetime, random, hashlib, logging, json
+import os, time, datetime, random, hashlib, logging, json
 import simple_khipu
 from flask import Flask,abort, request, jsonify, g, url_for
 from flask_httpauth import HTTPTokenAuth
@@ -8,13 +8,14 @@ from itsdangerous import (TimedJSONWebSignatureSerializer
                           as Serializer, BadSignature, SignatureExpired)
 from sqlalchemy.sql import func
 from flask_cors import CORS
+from sqlalchemy.sql import func
 
 app = Flask(__name__)
 CORS(app)
 app.config['SECRET_KEY'] = os.getenv('SECRET')
 app.config['SQLALCHEMY_DATABASE_URI'] = os.getenv('DB_URI')
 app.config['SQLALCHEMY_COMMIT_ON_TEARDOWN'] = True
-app.config['SQLALCHEMY_TRACK_MODIFICATIONS'] = True
+app.config['SQLALCHEMY_TRACK_MODIFICATIONS'] = False
 LOCAL = os.getenv('LOCAL')
 
 version = "0.1"
@@ -185,6 +186,21 @@ def edit_user():
     return(jsonify({'OK': '200'}), 200)
 
 # Payments
+
+class Payment(db.Model):
+    __tablename__ = 'payments'
+    id = db.Column(db.Integer, primary_key=True)
+    user_id = db.Column(db.String, index=True)
+    payment_id = db.Column(db.String)
+    status = db.Column(db.String) # Ex: COMPLETED
+    payment_type = db.Column(db.String) # Ex: Khipu
+    data = db.Column(db.Text)
+    payment_token = db.Column(db.String) # Ex: notification_token
+    last_updated = db.Column(db.DateTime(timezone=True), server_default=func.now())
+
+    
+    
+
 @app.route('/api/{0}/khipu'.format(version), methods=['POST'])
 def get_khipu_url():
     """
@@ -251,11 +267,21 @@ def get_khipu_url():
     if request.json.get('collect_account_uuid') is not None:
         data['collect_account_uuid'] = request.json.get('collect_account_uuid')
     try:
-        print (json.dumps(data))
-        return simple_khipu.create_payment(user_id, secret, json.dumps(data))
+        
+        response = simple_khipu.create_payment(user_id, secret, json.dumps(data))
+        response_data = json.loads(response)
+        
+        check = simple_khipu.check_payment(user_id, secret, json.dumps({'id':response_data['payment_id']}))        
+        check_data = json.loads(check)
+        payment = Payment(user_id=user_id, payment_id=response_data['payment_id'], status=check_data['status'],\
+            payment_type='KHIPU', payment_token=check_data['notification_token'], data=response)
+        db.session.add(payment)
+        db.session.commit()
+
+        return response
     
-    except:
-        abort(500)
+    except Exception, e:
+        abort(500,"Couldn't do it: %s" % e)
     
     
 
@@ -265,24 +291,34 @@ def check_khipu_payment():
     user_id = request.json.get('user_id')
     secret = request.json.get('secret')
     notification_token = request.json.get('notification_token')
-    if user_id is None or secret is None or notification_token is None:
-        abort(500)    
+    payment_id = request.json.get('payment_id')
 
-    data = {
-        'notification_token': notification_token
-    }
+    if user_id is None or secret is None:
+        abort(500)
+
+    data = {}
+
+    if notification_token is not None:
+        data['notification_token'] = notification_token
+
+    if payment_id is not None:
+        data['id'] = payment_id
 
     return simple_khipu.check_payment(user_id, secret, json.dumps(data))
 
 
 @app.route('/api/{0}/khipu/callback', methods=['POST'])
-def testreturn():
+def khipu_callback():
     form = request.form.to_dict()
-    data = json.dumps(form)
-    client = boto3.client('s3')
-    key = str(int(time.time()))
-    bucket = 'noxchange-khipu-dev'
-    client.put_object(Body=data, Bucket=bucket, Key='khipu/{0}.txt'.format(key))
+    data = json.dumps(form)    
+    #key = str(int(time.time()))
+
+    record = Payment.query.filter_by(notification_token=data['notification_token']).first()
+    payment = Payment(user_id=record['user_id'], payment_id=record['payment_id'], status='callback',\
+        payment_type='KHIPU', payment_token=data['notification_token'], data=record['data'])
+    db.session.add(payment)
+    db.session.commit()
+
     return jsonify(test_dict)
 
 if __name__ == '__main__':

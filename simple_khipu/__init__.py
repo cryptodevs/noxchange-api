@@ -18,6 +18,9 @@ def sign_message(secret, method, service, json_data):
 
 def format_data(json_data):
     response = ""
+    if json_data is None:
+        return ""
+
     data = json.loads(json_data)
     for k,v in sorted(data.items()):
         response += "&{0}={1}".format(quote(k, safe=''), quote(str(v), safe=''))
@@ -29,12 +32,17 @@ def make_request(user_id, method, service, secret, json_data):
         'Authorization': '{}:{}'.format(user_id, sign_message(secret, method, service, json_data))
     }
     
-    if method is 'POST':
-        payload = json.loads(json_data)
-        req = requests.post('{0}{1}'.format(URL, service),headers=headers,data=payload)
-    else:
+    if method is 'GET':
+        # Don't sign payload if is GET
+        headers = {
+            'Authorization': '{}:{}'.format(user_id, sign_message(secret, method, service, ""))
+        }        
         payload = format_data(json_data)
-        req = requests.get('{0}{1}?{2}'.format(URL,service,payload),headers=headers)
+        req = requests.get('{0}{1}?{2}'.format(URL,service,payload),headers=headers)        
+    else:
+        payload = json.loads(json_data)
+        req = requests.post('{0}{1}'.format(URL, service),headers=headers,data=payload)        
+
     return req.text
 
 def create_payment(user_id, secret, json_data):
