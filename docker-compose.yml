@@ -17,7 +17,7 @@ services:
     depends_on:
       - db
     environment:
-      - MAIL_ADDRESS=noxchange.test@gmail.com
+      - MAIL_ADDRESS=noxchange.dev@gmail.com
       - MAIL_PWD=zuperSecur3!
       - SECRET=acbd18db4cc2f85cedef654fccc4a4d8
       - DB_URI=postgresql://postgres@db:5432/postgres

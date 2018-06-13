@@ -1,5 +1,6 @@
 import os, time, datetime, random, hashlib, logging, json
 import simple_khipu
+import md5
 from flask import Flask,abort, request, jsonify, g, url_for
 from flask_httpauth import HTTPTokenAuth
 from flask_sqlalchemy import SQLAlchemy
@@ -8,7 +9,8 @@ from itsdangerous import (TimedJSONWebSignatureSerializer
                           as Serializer, BadSignature, SignatureExpired)
 from sqlalchemy.sql import func
 from flask_cors import CORS
-from sqlalchemy.sql import func
+from sqlalchemy import Sequence
+
 
 app = Flask(__name__)
 CORS(app)
@@ -51,6 +53,7 @@ class User(db.Model):
     username = db.Column(db.String(32), index=True, unique=True)
     password_hash = db.Column(db.Text, nullable=False)
     email = db.Column(db.String(32), index=True, unique=True)
+    active = db.Column(db.Boolean, default=False)
 
     def hash_password(self, password):
         self.password_hash = pwd_context.encrypt(password)
@@ -94,11 +97,34 @@ def verify_token(token):
         data = jwt.loads(token)
     except:
         return False
-    if 'username' in data:
+    if 'username' in data:        
         if User.query.filter_by(username=data['username']).first() is not None:
             return True
     return False
 
+
+@app.route('/api/{0}/user/verify/<string:email>/<string:token>'.format(version))
+def verify_user(email, token):
+    # Guard clause
+    if email is None or token is None:
+        abort(400)
+
+    user = User.query.filter_by(email=email, active=False).first()
+    if user is None:
+        abort(400) # User doesn't exists or user is already activated.
+
+    password = "{0}{1}{2}".format(user.id, user.email ,app.config['SECRET_KEY'])
+    
+    if md5.new(password).hexdigest() == token:
+        user.active = True
+        db.session.commit()
+        return(jsonify({'OK': '200'}), 200)
+    else:
+        abort(400) # Bad token
+
+
+
+    
 
 @app.route('/api/{0}/user/register'.format(version), methods=['POST'])
 def new_user():
@@ -116,6 +142,17 @@ def new_user():
     user.hash_password(password)
     db.session.add(user)
     db.session.commit()
+
+    # Send confirmation email
+    admin_user = os.getenv("MAIL_ADDRESS")
+    admin_pwd = os.getenv("MAIL_PWD")
+    subject = 'Confirm your account'
+    token = md5.new("{0}{1}{2}".format(user.id, user.email, app.config['SECRET_KEY'])).hexdigest()
+    url = '{0}api/{1}/user/verify/{2}/{3}'.format(request.url_root, version, user.email, token)
+
+    body = "Confirm your account with the following link: {0}".format(url)
+    User.send_email(admin_user, admin_pwd, email, subject, body)
+
     return (jsonify({'username': user.username}), 201,
             {'Location': url_for('get_user', id=user.id, _external=True)})
 
@@ -138,9 +175,9 @@ def get_auth_token():
     if not User.query.filter_by(email=email).first() is not None:
         abort(400) # It doesn't exists
 
-    user = User.query.filter_by(email=email).first()
-    if not user.verify_password(password):
-        abort(400) # Password doesn't match
+    user = User.query.filter_by(email=email, active=True).first()
+    if user is None or not user.verify_password(password):
+        abort(400) # Password doesn't match || user doesn't activate the account yet
 
     token = user.generate_auth_token()
     return jsonify({'token': token.decode('ascii'), 'duration': 3600})
@@ -161,8 +198,8 @@ def forgot_password():
     user.password_hash =  pwd_context.encrypt(new_pwd)
     db.session.commit()
 
-    admin_user = os.getenv("MAIL_ADDRESS","noxchange.test@gmail.com")
-    admin_pwd = os.getenv("MAIL_PWD","zuperSecur3!")
+    admin_user = os.getenv("MAIL_ADDRESS")
+    admin_pwd = os.getenv("MAIL_PWD")
     subject = 'Your new password'
     body = "Your new password is:{0}".format(new_pwd)
     User.send_email(admin_user, admin_pwd, email, subject, body)
@@ -177,7 +214,7 @@ def edit_user():
     if email is None:
         abort(400)
     
-    user = User.query.filter_by(username=username).first()  
+    user = User.query.filter_by(username=username).first()
     if user is None:
         abort(400)
     # Only can change email field.
@@ -186,10 +223,11 @@ def edit_user():
     return(jsonify({'OK': '200'}), 200)
 
 # Payments
+payments_sequence = Sequence('payments_id_seq', start=10)
 
 class Payment(db.Model):
     __tablename__ = 'payments'
-    id = db.Column(db.Integer, primary_key=True)
+    id = db.Column(db.Integer, payments_sequence, primary_key=True)
     user_id = db.Column(db.String, index=True)
     payment_id = db.Column(db.String)
     status = db.Column(db.String) # Ex: COMPLETED
@@ -332,4 +370,4 @@ if __name__ == '__main__':
         logging.info(os.environ)  
         db.create_all()
         app.run()
-        
+

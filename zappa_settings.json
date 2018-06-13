@@ -10,14 +10,10 @@
         "cors": true,
         "timeout_seconds": 120,
         "environment_variables": {
-            "MAIL_ADDRESS": "noxchange.test@gmail.com",
+            "MAIL_ADDRESS": "noxchange.dev@gmail.com",
             "MAIL_PWD": "zuperSecur3!",
-            "DB_URI": "postgresql://noxchange_dev:thNj7sm5.PJl.@noxchange-db-dev.cnnxmhjf0aqi.us-east-1.rds.amazonaws.com:5432/noxchange_dev"
-        },
-        "aws_environment_variables": {
-            "MAIL_ADDRESS": "noxchange.test@gmail.com",
-            "MAIL_PWD": "zuperSecur3!",
-            "DB_URI": "postgresql://noxchange_dev:thNj7sm5.PJl.@noxchange-db-dev.cnnxmhjf0aqi.us-east-1.rds.amazonaws.com:5432/noxchange_dev"
-        }        
+            "DB_URI": "postgresql://noxchange_dev:thNj7sm5.PJl.@noxchange-db-dev.cnnxmhjf0aqi.us-east-1.rds.amazonaws.com:5432/noxchange_dev",
+            "SECRET": "acbd18db4cc2f85cedef654fccc4a4d8"
+        }
     }
 }
