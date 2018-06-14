@@ -92,13 +92,14 @@ class User(db.Model):
 
 @auth.verify_token
 def verify_token(token):
-    g.user = None
+    g.username = None
     try:
         data = jwt.loads(token)
     except:
         return False
-    if 'username' in data:        
+    if 'username' in data:
         if User.query.filter_by(username=data['username']).first() is not None:
+            g.username = data['username']
             return True
     return False
 
