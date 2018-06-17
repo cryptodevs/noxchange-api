@@ -371,30 +371,34 @@ class Ask(db.Model):
     id = db.Column(db.Integer, primary_key=True)
     user_id = db.Column(db.Integer, db.ForeignKey(User.id), index=True)
     status = db.Column(db.String) # ('ACTIVE', 'INACTIVE')
-    market = db.Column(db.String)
+    market = db.Column(db.String, primary_key=True)
     market_price = db.Column(db.Boolean)
     price = db.Column(db.Float)
     qty = db.Column(db.Float)
     created_at = db.Column(db.DateTime(timezone=True), server_default=func.now())
 
 ASK_ADD = {
-    'market': fields.Str(location='json'),
-    'status': fields.Boolean(location='json'),
-    'market_price': fields.Boolean(location='json'),
-    'price': fields.Str(location='json'),
-    'qty': fields.Str(location='json'),
+    'market': fields.Str(location='json', required=True),
+    'status': fields.Boolean(location='json', required=True),
+    'market_price': fields.Boolean(location='json', required=True),
+    'price': fields.Float(location='json'),
+    'qty': fields.Float(location='json', required=True),
 }
 @app.route('/api/{0}/ask'.format(version), methods=['POST'])
 @auth.login_required
 @use_args(ASK_ADD)
 def new_ask(args):
-    ask = Ask(user_id=g.userid, **args)
-    db.session.add(ask)
+    args.get['status'] = args.get('status') and 'ACTIVE' or 'INACTIVE'
+    did_update = Ask.query.filter_by(user_id=g.userid, market=args.get('market')) \
+                    .update(args)
+    if did_update == 0:
+      ask = Ask(user_id=g.userid, **args)
+      db.session.add(ask)
     db.session.commit()
-    return jsonify({'id': ask.id}), 200
+    return jsonify({}), 200
 
 
-MARKETS = ['ethereum']
+MARKETS = ['ethereum', 'chaucha', 'luka']
 ASK_LIST = {
     'market': fields.Str(location='view_args', required=True, validate=lambda mkt: mkt in MARKETS),
 }
@@ -403,7 +407,7 @@ ASK_LIST = {
 def list_ask(args, market):
     asks = db.session.query(Ask, User) \
             .join(User, Ask.user_id == User.id) \
-            .filter(Ask.market==market, Ask.status=='true') \
+            .filter(Ask.market==market, Ask.status=='ACTIVE') \
             .order_by(Ask.created_at.desc())
     response = []
     for ask, user in asks:
@@ -415,6 +419,24 @@ def list_ask(args, market):
         'created_at': ask.created_at,
       })
     return jsonify(response), 200
+
+@app.route('/api/{0}/user/asks'.format(version), methods=['GET'])
+@auth.login_required
+def user_asks():
+    asks = Ask.query.filter_by(user_id=g.userid)
+    response = []
+    for ask in asks:
+      response.append({
+        'id': ask.id,
+        'market': ask.market,
+        'status': ask.status == 'ACTIVE',
+        'market_price': ask.market_price,
+        'price': ask.price,
+        'qty': ask.qty,
+        'created_at': ask.created_at,
+      })
+    return jsonify(response), 200
+
 
 @app.errorhandler(422)
 def handle_unprocessable_entity(err):
