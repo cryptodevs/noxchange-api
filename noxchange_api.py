@@ -367,6 +367,9 @@ def khipu_callback():
 
 
 class Ask(db.Model):
+    """ The ask is the price a seller is willing to accept for a security, which is often referred to as the offer price.
+        Along with the price, the ask quote might also stipulate the amount of the security available to be sold at the stated price.
+    """
     __tablename__ = 'asks'
     id = db.Column(db.Integer, primary_key=True)
     user_id = db.Column(db.Integer, db.ForeignKey(User.id), index=True)
@@ -388,7 +391,10 @@ ASK_ADD = {
 @auth.login_required
 @use_args(ASK_ADD)
 def new_ask(args):
-    args.get['status'] = args.get('status') and 'ACTIVE' or 'INACTIVE'
+    """ Creates or updates the user Ask configuration about a coin,
+        a user can have as much as 1 Ask per coin
+    """
+    args['status'] = args.get('status') and 'ACTIVE' or 'INACTIVE'
     did_update = Ask.query.filter_by(user_id=g.userid, market=args.get('market')) \
                     .update(args)
     if did_update == 0:
@@ -405,6 +411,7 @@ ASK_LIST = {
 @app.route('/api/{0}/market/<market>'.format(version), methods=['GET'])
 @use_args(ASK_LIST)
 def list_ask(args, market):
+    """ Lists all the available asks to be displayed in the market """
     asks = db.session.query(Ask, User) \
             .join(User, Ask.user_id == User.id) \
             .filter(Ask.market==market, Ask.status=='ACTIVE') \
@@ -423,6 +430,7 @@ def list_ask(args, market):
 @app.route('/api/{0}/user/asks'.format(version), methods=['GET'])
 @auth.login_required
 def user_asks():
+    """ Lists all the user asks to be displayed in the user `sell` interface """
     asks = Ask.query.filter_by(user_id=g.userid)
     response = []
     for ask in asks:
