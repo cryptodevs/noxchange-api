@@ -10,7 +10,10 @@ from itsdangerous import (TimedJSONWebSignatureSerializer
 from sqlalchemy.sql import func
 from flask_cors import CORS
 from sqlalchemy import Sequence
-
+from webargs.flaskparser import use_args
+from webargs import fields
+import logging
+logging.basicConfig(level=logging.DEBUG)
 
 app = Flask(__name__)
 CORS(app)
@@ -64,7 +67,7 @@ class User(db.Model):
 
     def generate_auth_token(self, expiration=3600):
         s = Serializer(app.config['SECRET_KEY'], expires_in=expiration)
-        return s.dumps({'username': self.username})
+        return s.dumps({'username': self.username, 'userid': self.id})
 
     @staticmethod
     def send_email(user, pwd, recipient, subject, body):
@@ -93,6 +96,7 @@ class User(db.Model):
 @auth.verify_token
 def verify_token(token):
     g.username = None
+    g.userid = None
     try:
         data = jwt.loads(token)
     except:
@@ -100,6 +104,7 @@ def verify_token(token):
     if 'username' in data:
         if User.query.filter_by(username=data['username']).first() is not None:
             g.username = data['username']
+            g.userid = data['userid']
             return True
     return False
 
@@ -359,6 +364,92 @@ def khipu_callback():
     db.session.commit()
 
     return jsonify(test_dict)
+
+
+class Ask(db.Model):
+    """ The ask is the price a seller is willing to accept for a security, which is often referred to as the offer price.
+        Along with the price, the ask quote might also stipulate the amount of the security available to be sold at the stated price.
+    """
+    __tablename__ = 'asks'
+    id = db.Column(db.Integer, primary_key=True)
+    user_id = db.Column(db.Integer, db.ForeignKey(User.id), index=True)
+    status = db.Column(db.String) # ('ACTIVE', 'INACTIVE')
+    market = db.Column(db.String, primary_key=True)
+    market_price = db.Column(db.Boolean)
+    price = db.Column(db.Float)
+    qty = db.Column(db.Float)
+    created_at = db.Column(db.DateTime(timezone=True), server_default=func.now())
+
+ASK_ADD = {
+    'market': fields.Str(location='json', required=True),
+    'status': fields.Boolean(location='json', required=True),
+    'market_price': fields.Boolean(location='json', required=True),
+    'price': fields.Float(location='json'),
+    'qty': fields.Float(location='json', required=True),
+}
+@app.route('/api/{0}/ask'.format(version), methods=['POST'])
+@auth.login_required
+@use_args(ASK_ADD)
+def new_ask(args):
+    """ Creates or updates the user Ask configuration about a coin,
+        a user can have as much as 1 Ask per coin
+    """
+    args['status'] = args.get('status') and 'ACTIVE' or 'INACTIVE'
+    did_update = Ask.query.filter_by(user_id=g.userid, market=args.get('market')) \
+                    .update(args)
+    if did_update == 0:
+      ask = Ask(user_id=g.userid, **args)
+      db.session.add(ask)
+    db.session.commit()
+    return jsonify({}), 200
+
+
+MARKETS = ['ethereum', 'chaucha', 'luka']
+ASK_LIST = {
+    'market': fields.Str(location='view_args', required=True, validate=lambda mkt: mkt in MARKETS),
+}
+@app.route('/api/{0}/market/<market>'.format(version), methods=['GET'])
+@use_args(ASK_LIST)
+def list_ask(args, market):
+    """ Lists all the available asks to be displayed in the market """
+    asks = db.session.query(Ask, User) \
+            .join(User, Ask.user_id == User.id) \
+            .filter(Ask.market==market, Ask.status=='ACTIVE') \
+            .order_by(Ask.created_at.desc())
+    response = []
+    for ask, user in asks:
+      response.append({
+        'id': ask.id,
+        'username': user.username,
+        'price': ask.price,
+        'qty': ask.qty,
+        'created_at': ask.created_at,
+      })
+    return jsonify(response), 200
+
+@app.route('/api/{0}/user/asks'.format(version), methods=['GET'])
+@auth.login_required
+def user_asks():
+    """ Lists all the user asks to be displayed in the user `sell` interface """
+    asks = Ask.query.filter_by(user_id=g.userid)
+    response = []
+    for ask in asks:
+      response.append({
+        'id': ask.id,
+        'market': ask.market,
+        'status': ask.status == 'ACTIVE',
+        'market_price': ask.market_price,
+        'price': ask.price,
+        'qty': ask.qty,
+        'created_at': ask.created_at,
+      })
+    return jsonify(response), 200
+
+
+@app.errorhandler(422)
+def handle_unprocessable_entity(err):
+    # webargs attaches additional metadata to the `data` attribute
+    return jsonify(err.data['messages']), 422
 
 if __name__ == '__main__':
     # Waiting for docker initialization
