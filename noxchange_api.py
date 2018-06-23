@@ -1,4 +1,4 @@
-import os, time, datetime, random, hashlib, logging, json
+import os, time, datetime, random, hashlib, logging, json, requests
 import simple_khipu
 import md5
 from flask import Flask,abort, request, jsonify, g, url_for
@@ -22,6 +22,7 @@ app.config['SQLALCHEMY_DATABASE_URI'] = os.getenv('DB_URI')
 app.config['SQLALCHEMY_COMMIT_ON_TEARDOWN'] = True
 app.config['SQLALCHEMY_TRACK_MODIFICATIONS'] = False
 LOCAL = os.getenv('LOCAL')
+ETH_API = os.getenv('ETH_API')
 
 version = "0.1"
 
@@ -379,6 +380,7 @@ class Ask(db.Model):
     price = db.Column(db.Float)
     qty = db.Column(db.Float)
     created_at = db.Column(db.DateTime(timezone=True), server_default=func.now())
+    updated_at = db.Column(db.DateTime(timezone=True), server_default=func.now())
 
 ASK_ADD = {
     'market': fields.Str(location='json', required=True),
@@ -445,6 +447,142 @@ def user_asks():
       })
     return jsonify(response), 200
 
+class Bid(db.Model):
+    """ A bid is an offer made by an investor, trader or dealer to buy a security, commodity or currency.
+        It stipulates both the price the potential buyer is willing to pay and the quantity to be purchased at that price.
+    """
+    # TODO: consider that with some coins buyer_address might be more than just an address
+    __tablename__ = 'bids'
+    id = db.Column(db.Integer, primary_key=True)
+    ask_id = db.Column(db.Integer, db.ForeignKey(Ask.id), index=True)
+    user_id = db.Column(db.Integer, db.ForeignKey(User.id), index=True) # TODO: change to buyer
+    status = db.Column(db.String)
+    price = db.Column(db.Float)
+    qty = db.Column(db.Float)
+    buyer_address = db.Column(db.String)
+    escrow_address = db.Column(db.String)
+    created_at = db.Column(db.DateTime(timezone=True), server_default=func.now())
+    updated_at = db.Column(db.DateTime(timezone=True), server_default=func.now())
+
+BID_ADD = {
+    'ask_id': fields.Integer(location='json'),
+    'price': fields.Float(location='json'),
+    'qty': fields.Float(location='json', required=True),
+    'buyer_address': fields.Str(location='json', required=True), # TODO: may be different type of addresses
+}
+@app.route('/api/{0}/bid'.format(version), methods=['POST'])
+@auth.login_required
+@use_args(BID_ADD)
+def new_bid(args):
+    """ Places a Bid for an Ask,
+    """
+    bid = Bid(user_id=g.userid, status='REQUESTED', **args)
+    db.session.add(bid)
+    db.session.commit()
+
+    ask, user = db.session.query(Ask, User) \
+                  .join(User, Ask.user_id == User.id) \
+                  .filter(Ask.id==bid.ask_id) \
+                  .first()
+
+    # notify the seller
+    admin_user = os.getenv("MAIL_ADDRESS")
+    admin_pwd = os.getenv("MAIL_PWD")
+    subject = 'New request from NOX'
+    body = "The user {} wants to buy {} {} at {}".format(g.username, bid.qty, ask.market, bid.price)
+    User.send_email(admin_user, admin_pwd, user.email, subject, body)
+
+    return jsonify({}), 200
+
+@app.route('/api/{0}/user/bids'.format(version), methods=['GET'])
+@auth.login_required
+def user_bids():
+    """ Lists all the user received bids to be displayed in the user `operations` interface
+        This is, bids to the user asks
+    """
+    asks = Bid.query.filter_by(user_id=g.userid)
+    result = db.session.query(Ask, Bid, User) \
+                  .join(Bid, Ask.id == Bid.ask_id) \
+                  .join(User, User.id == Bid.user_id) \
+                  .filter(Ask.user_id==g.userid)
+    response = []
+    for ask, bid, user in result:
+      response.append({
+        'id': bid.id,
+        'ask_id': ask.id,
+        'user_id': user.id,
+        'username': user.username,
+        'market': ask.market,
+        'status': bid.status,
+        'price': bid.price,
+        'qty': bid.qty,
+        'created_at': ask.created_at,
+        'updated_at': bid.updated_at,
+        'escrow_address': bid.escrow_address,
+      })
+
+    return jsonify(response), 200
+
+BID_ACCEPT = {
+    'bid_id': fields.Integer(location='json', required=True),
+}
+@app.route('/api/{0}/bid/accept'.format(version), methods=['POST'])
+@auth.login_required
+@use_args(BID_ACCEPT)
+def accept_bid(args):
+    """ Accept a bid from a user TODO: create a history of changes
+    """
+    # seller
+    # buyer
+    # ask
+    # bid
+    bid_id = args.get('bid_id')
+    logging.debug('Accept Bid #{}'.format(bid_id))
+    # TODO: only accept a bid once
+
+    data = db.session.query(Bid, Ask, User) \
+                       .join(Ask, Ask.id == Bid.ask_id) \
+                       .join(User, Bid.user_id == User.id) \
+                       .filter(Bid.id==bid_id) \
+                       .first()
+    if not data:
+      return '{}', 404
+
+    bid, ask, buyer = data
+    logging.debug('bid {}'.format(bid))
+    logging.debug('ask {}'.format(ask))
+    logging.debug('buyer {}'.format(buyer))
+
+    bid.status = 'ACCEPTED'
+    bid.updated_at = datetime.datetime.now()
+
+    # generate a new address to be used in the tx
+    query = {
+      'buyerAddress': bid.buyer_address,
+      'qty': bid.qty,
+      'id': bid.id,
+    }
+    logging.debug('Request query: {}'.format(query))
+    # TODO: change to post
+    ETH_API='http://192.168.0.10:3009'
+    response = requests.get(ETH_API+'/new-tx', query)
+    # TODO: handle errors
+    result = response.json()
+    logging.debug('Response: {}'.format(result))
+    bid.escrow_address = result['address']
+    db.session.commit()
+
+    # notify the buyer
+    admin_user = os.getenv("MAIL_ADDRESS")
+    admin_pwd = os.getenv("MAIL_PWD")
+    subject = 'Your bid was accepted'
+    body = '''Hi {}.
+The user {} has accepted your request. #{}
+We'll notify you when is time to pay.
+'''.format(buyer.username, g.username, bid.id)
+    User.send_email(admin_user, admin_pwd, buyer.email, subject, body)
+
+    return jsonify({'escrow_address': bid.escrow_address}), 200
 
 @app.errorhandler(422)
 def handle_unprocessable_entity(err):
@@ -462,4 +600,3 @@ if __name__ == '__main__':
         logging.info(os.environ)  
         db.create_all()
         app.run()
-
