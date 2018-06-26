@@ -549,9 +549,7 @@ def accept_bid(args):
       return '{}', 404
 
     bid, ask, buyer = data
-    logging.debug('bid {}'.format(bid))
-    logging.debug('ask {}'.format(ask))
-    logging.debug('buyer {}'.format(buyer))
+    logging.debug('bid {} ask {} buyer {}'.format(bid, ask, buyer))
 
     bid.status = 'ACCEPTED'
     bid.updated_at = datetime.datetime.now()
@@ -564,7 +562,7 @@ def accept_bid(args):
     }
     logging.debug('Request query: {}'.format(query))
     # TODO: change to post
-    ETH_API='http://192.168.0.10:3009'
+    ETH_API='http://10.10.3.2:3009'
     response = requests.get(ETH_API+'/new-tx', query)
     # TODO: handle errors
     result = response.json()
@@ -577,12 +575,54 @@ def accept_bid(args):
     admin_pwd = os.getenv("MAIL_PWD")
     subject = 'Your bid was accepted'
     body = '''Hi {}.
-The user {} has accepted your request. #{}
+The user {} has accepted your request #{}
 We'll notify you when is time to pay.
 '''.format(buyer.username, g.username, bid.id)
     User.send_email(admin_user, admin_pwd, buyer.email, subject, body)
 
     return jsonify({'escrow_address': bid.escrow_address}), 200
+
+
+@app.route('/api/{0}/bid/reject'.format(version), methods=['POST'])
+@auth.login_required
+@use_args(BID_ACCEPT)
+def reject_bid(args):
+    """ Reject a bid from a user TODO: create a history of changes
+    """
+    # seller
+    # buyer
+    # ask
+    # bid
+    bid_id = args.get('bid_id')
+    logging.debug('Reject Bid #{}'.format(bid_id))
+    # TODO: only reject a bid once
+    data = db.session.query(Bid, Ask, User) \
+                       .join(Ask, Ask.id == Bid.ask_id) \
+                       .join(User, Bid.user_id == User.id) \
+                       .filter(Bid.id==bid_id) \
+                       .first()
+    if not data:
+      return '{}', 404
+
+    bid, ask, buyer = data
+    logging.debug('bid {} ask {} buyer {}'.format(bid, ask, buyer))
+
+    bid.status = 'REJECTED'
+    bid.updated_at = datetime.datetime.now()
+    db.session.commit()
+
+    # notify the buyer
+    admin_user = os.getenv("MAIL_ADDRESS")
+    admin_pwd = os.getenv("MAIL_PWD")
+    subject = 'Your bid was rejected'
+    body = '''Hi {}.
+The user {} has rejected your request #{}
+'''.format(buyer.username, g.username, bid.id)
+    User.send_email(admin_user, admin_pwd, buyer.email, subject, body)
+
+    return jsonify({}), 200
+
+
 
 @app.errorhandler(422)
 def handle_unprocessable_entity(err):
