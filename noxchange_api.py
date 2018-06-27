@@ -451,7 +451,6 @@ class Bid(db.Model):
     """ A bid is an offer made by an investor, trader or dealer to buy a security, commodity or currency.
         It stipulates both the price the potential buyer is willing to pay and the quantity to be purchased at that price.
     """
-    # TODO: consider that with some coins buyer_address might be more than just an address
     __tablename__ = 'bids'
     id = db.Column(db.Integer, primary_key=True)
     ask_id = db.Column(db.Integer, db.ForeignKey(Ask.id), index=True)
@@ -459,22 +458,23 @@ class Bid(db.Model):
     status = db.Column(db.String)
     price = db.Column(db.Float)
     qty = db.Column(db.Float)
+    # TODO: consider that with some coins buyer_address might be more than just an address
     buyer_address = db.Column(db.String)
     escrow_address = db.Column(db.String)
     created_at = db.Column(db.DateTime(timezone=True), server_default=func.now())
     updated_at = db.Column(db.DateTime(timezone=True), server_default=func.now())
 
 BID_ADD = {
-    'ask_id': fields.Integer(location='json'),
+    'ask_id': fields.Integer(location='json', required=True),
     'price': fields.Float(location='json'),
     'qty': fields.Float(location='json', required=True),
-    'buyer_address': fields.Str(location='json', required=True), # TODO: may be different type of addresses
+    'buyer_address': fields.Str(location='json', required=True), # TODO: may be different type of addresses to validate
 }
 @app.route('/api/{0}/bid'.format(version), methods=['POST'])
 @auth.login_required
 @use_args(BID_ADD)
 def new_bid(args):
-    """ Places a Bid for an Ask,
+    """ Places a Bid for an Ask, Notify the seller
     """
     bid = Bid(user_id=g.userid, status='REQUESTED', **args)
     db.session.add(bid)
@@ -562,7 +562,6 @@ def accept_bid(args):
     }
     logging.debug('Request query: {}'.format(query))
     # TODO: change to post
-    ETH_API='http://10.10.3.2:3009'
     response = requests.get(ETH_API+'/new-tx', query)
     # TODO: handle errors
     result = response.json()
@@ -621,8 +620,6 @@ The user {} has rejected your request #{}
     User.send_email(admin_user, admin_pwd, buyer.email, subject, body)
 
     return jsonify({}), 200
-
-
 
 @app.errorhandler(422)
 def handle_unprocessable_entity(err):
